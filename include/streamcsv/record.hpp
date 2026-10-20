@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -14,6 +15,9 @@ public:
 
     explicit Record(std::vector<std::string> fields, std::size_t line_number = 0)
         : fields_(std::move(fields)), line_number_(line_number) {}
+
+    Record(std::initializer_list<std::string> fields, std::size_t line_number = 0)
+        : fields_(fields), line_number_(line_number) {}
 
     [[nodiscard]] std::size_t line_number() const noexcept { return line_number_; }
     void set_line_number(std::size_t line) noexcept { line_number_ = line; }
@@ -44,9 +48,21 @@ public:
         fields_.push_back(std::move(field));
     }
 
+    void reserve(std::size_t capacity) {
+        fields_.reserve(capacity);
+    }
+
     void clear() noexcept {
         fields_.clear();
         line_number_ = 0;
+    }
+
+    bool operator==(const Record& other) const noexcept {
+        return fields_ == other.fields_ && line_number_ == other.line_number_;
+    }
+
+    bool operator!=(const Record& other) const noexcept {
+        return !(*this == other);
     }
 
     auto begin() const noexcept { return fields_.begin(); }

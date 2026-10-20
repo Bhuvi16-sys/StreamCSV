@@ -1,3 +1,7 @@
+add_executable(test_types test_types.cpp)
+target_link_libraries(test_types PRIVATE streamcsv::streamcsv)
+add_test(NAME test_types COMMAND test_types)
+
 add_executable(test_reader test_reader.cpp)
 target_link_libraries(test_reader PRIVATE streamcsv::streamcsv)
 add_test(NAME test_reader COMMAND test_reader)
