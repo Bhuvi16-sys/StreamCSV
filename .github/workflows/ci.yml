@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        build_type: [Release, Debug]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DSTREAMCSV_BUILD_TESTS=ON
+          -DSTREAMCSV_BUILD_EXAMPLES=ON
+          -DSTREAMCSV_BUILD_BENCHMARKS=ON
+
+      - name: Build All Targets
+        run: cmake --build build --config ${{ matrix.build_type }}
+
+      - name: Run Test Suite
+        run: ctest --test-dir build --output-on-failure -C ${{ matrix.build_type }}
