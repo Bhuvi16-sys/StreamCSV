@@ -1,0 +1,30 @@
+# Build directories
+build/
+bin/
+lib/
+out/
+cmake-build-*/
+.cache/
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Test / Fuzz artifacts
+crash-*
+leak-*
+timeout-*
