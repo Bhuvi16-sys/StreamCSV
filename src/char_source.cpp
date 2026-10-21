@@ -81,7 +81,7 @@ int CharSource::get() {
         column_ = 0;
     } else if (ch == '\n') {
         if (last_was_cr_) {
-            // CRLF: Line already incremented on \r
+            // CRLF: Line was already incremented on \r
             last_was_cr_ = false;
             column_ = 0;
         } else {
