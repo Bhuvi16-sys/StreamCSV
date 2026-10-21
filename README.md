@@ -47,7 +47,8 @@ StreamCSV/
 │   └── fuzz_reader.cpp
 └── docs/
     ├── csv-contract.md
-    └── architecture.md
+    ├── architecture.md
+    └── interview-prep.md
 ```
 
 ---
