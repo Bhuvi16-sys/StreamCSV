@@ -1,6 +1,6 @@
 # StreamCSV
 
-A modern C++17 library that reads CSV one record at a time in bounded memory, reports precise errors, validates records against a schema, and ships with a CLI, tests, fuzzing, CI, and a release.
+A modern C++17 library that streams CSV records in bounded memory, reports exact line/column errors, validates records against schemas, writes RFC 4180 compliant CSV, and ships with a CLI, unit tests, fuzzing, CI, and benchmarks.
 
 ---
 
@@ -21,21 +21,26 @@ StreamCSV/
 │       ├── csv.hpp
 │       ├── reader.hpp
 │       ├── record.hpp
+│       ├── writer.hpp
 │       ├── error.hpp
 │       └── schema.hpp
 ├── src/
 │   ├── reader.cpp
 │   ├── char_source.cpp
+│   ├── writer.cpp
 │   ├── schema.cpp
 │   └── cli/
 │       └── main.cpp
 ├── tests/
 │   ├── CMakeLists.txt
+│   ├── test_types.cpp
 │   ├── test_reader.cpp
+│   ├── test_writer.cpp
 │   ├── test_errors.cpp
 │   └── test_schema.cpp
 ├── examples/
-│   └── basic_read.cpp
+│   ├── basic_read.cpp
+│   └── basic_write.cpp
 ├── benchmarks/
 │   └── benchmark.cpp
 ├── fuzz/
@@ -53,13 +58,64 @@ Data flows strictly in one direction:
 
 ```
 std::istream --> CharSource --> Reader (state machine) --> Record --> Validator --> Issues
-  (bytes)        (buffer,        (grammar, ParseError)      (fields)   (schema)     (CLI prints)
-                  BOM, line/col)
+  (bytes)        (buffer,        (grammar, ParseError)      (fields,   (schema)     (CLI prints)
+                  BOM, line/col)                             types)
+
+Record / Typed Values --> Writer (escaping, quoting) --> std::ostream
 ```
 
-- **Bounded Memory**: `CharSource` streams chunks through a fixed-size buffer (default 8 KB).
+- **Bounded Memory**: `CharSource` streams chunks through a fixed-size buffer (default 8 KB) with upper bounds on field size and column count.
 - **Exact Coordinates**: Reports 1-based `line` and `column` numbers for all parse errors.
 - **RFC 4180 Compliant**: Supports quoted fields, multiline values, escaped quotes (`""`), and UTF-8 BOM detection.
+- **Modern C++17 Ergonomics**: Range-based for loops over `Reader`, typed record getters (`record.get<T>()`), header mappings (`record["name"]`), and variadic row writing (`writer.write_row(...)`).
+
+---
+
+## Quickstart C++ API
+
+### Streaming Reader with Range-Based Loop and Typed Accessors
+
+```cpp
+#include <streamcsv/csv.hpp>
+#include <iostream>
+#include <fstream>
+
+int main() {
+    std::ifstream file("data.csv");
+    
+    streamcsv::ReaderConfig config;
+    config.has_header = true;
+    streamcsv::Reader reader(file, config);
+
+    // Range-based for loop with header lookup and typed conversions
+    for (const auto& record : reader) {
+        int id = record.get<int>("id");
+        std::string name = record["name"];
+        double score = record.get<double>("score");
+        bool active = record.get<bool>("active");
+
+        std::cout << id << ": " << name << " (" << score << ") active=" << active << "\n";
+    }
+}
+```
+
+### Streaming Writer with RFC 4180 Quoting
+
+```cpp
+#include <streamcsv/csv.hpp>
+#include <iostream>
+
+int main() {
+    streamcsv::Writer writer(std::cout);
+
+    // 1. Write header record
+    writer.write_record({"id", "name", "notes", "score"});
+
+    // 2. Write rows with automatic quote escaping
+    writer.write_row(1, "Alice", "Notes with, comma and \"quotes\"", 99.5);
+    writer.write_row(2, "Bob", "Multiline\nnotes\nsupported", 84.0);
+}
+```
 
 ---
 

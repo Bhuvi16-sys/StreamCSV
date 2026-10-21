@@ -7,3 +7,4 @@
 #include <streamcsv/reader.hpp>
 #include <streamcsv/record.hpp>
 #include <streamcsv/schema.hpp>
+#include <streamcsv/writer.hpp>

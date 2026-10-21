@@ -3,8 +3,10 @@
 
 #include <cassert>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 static void test_record_basics() {
     streamcsv::Record r1;
@@ -52,6 +54,64 @@ static void test_record_equality_and_init_list() {
     assert(concatenated == "col1,col2,col3,");
 }
 
+static void test_record_typed_getters() {
+    streamcsv::Record r({"42", "-17", "3.1415", "true", "FALSE", "hello world", ""});
+
+    // Valid conversions
+    assert(r.get<int>(0) == 42);
+    assert(r.get<long long>(0) == 42LL);
+    assert(r.get<int>(1) == -17);
+    assert(r.get<double>(2) > 3.14 && r.get<double>(2) < 3.15);
+    assert(r.get<float>(2) > 3.14f && r.get<float>(2) < 3.15f);
+    assert(r.get<bool>(3) == true);
+    assert(r.get<bool>(4) == false);
+    assert(r.get<std::string>(5) == "hello world");
+    assert(r.get<std::string_view>(5) == "hello world");
+
+    // Optional getters
+    assert(r.get_optional<int>(0) == 42);
+    assert(!r.get_optional<int>(5).has_value()); // "hello world" cannot convert to int
+    assert(!r.get_optional<int>(6).has_value()); // empty field
+    assert(!r.get_optional<int>(99).has_value()); // out of range
+
+    // Exceptions on invalid conversion
+    bool caught_invalid = false;
+    try {
+        (void)r.get<int>(5);
+    } catch (const std::invalid_argument&) {
+        caught_invalid = true;
+    }
+    assert(caught_invalid);
+}
+
+static void test_record_headers() {
+    auto headers = std::make_shared<const std::vector<std::string>>(
+        std::vector<std::string>{"id", "username", "score", "active"}
+    );
+
+    streamcsv::Record r({"101", "alice", "99.5", "yes"});
+    r.set_headers(headers);
+
+    assert(r.has_headers());
+    assert(r.headers().size() == 4);
+    assert(r["username"] == "alice");
+    assert(r.at("score") == "99.5");
+    assert(r.get<int>("id") == 101);
+    assert(r.get<double>("score") > 99.4);
+    assert(r.get<bool>("active") == true);
+
+    assert(r.get_optional<int>("id") == 101);
+    assert(!r.get_optional<int>("nonexistent").has_value());
+
+    bool caught_missing_col = false;
+    try {
+        (void)r.at("not_in_header");
+    } catch (const std::out_of_range&) {
+        caught_missing_col = true;
+    }
+    assert(caught_missing_col);
+}
+
 static void test_error_hierarchy() {
     // Polymorphic catch as CsvError and std::runtime_error
     try {
@@ -95,10 +155,12 @@ static void test_error_hierarchy() {
 }
 
 int main() {
-    std::cout << "Running test_types (Phase 1 validation)...\n";
+    std::cout << "Running test_types (Phase 1 validation & typed accessors)...\n";
     test_record_basics();
     test_record_equality_and_init_list();
+    test_record_typed_getters();
+    test_record_headers();
     test_error_hierarchy();
-    std::cout << "test_types PASSED! Phase 1 foundation is rock solid.\n";
+    std::cout << "test_types PASSED! Phase 1 foundation & typed accessors rock solid.\n";
     return 0;
 }

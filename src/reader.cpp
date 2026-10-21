@@ -50,7 +50,37 @@ bool Reader::read_record(Record& out) {
     return false;
 }
 
+bool Reader::has_header() const noexcept {
+    return headers_ != nullptr;
+}
+
+const std::vector<std::string>& Reader::header() const {
+    static const std::vector<std::string> empty_headers;
+    return headers_ ? *headers_ : empty_headers;
+}
+
+void Reader::set_header(std::vector<std::string> headers) {
+    headers_ = std::make_shared<const std::vector<std::string>>(std::move(headers));
+    header_processed_ = true;
+}
+
 std::optional<Record> Reader::next_record() {
+    if (config_.has_header && !header_processed_) {
+        header_processed_ = true;
+        auto header_rec = parse_raw_record();
+        if (header_rec) {
+            headers_ = std::make_shared<const std::vector<std::string>>(header_rec->fields());
+        }
+    }
+
+    auto rec = parse_raw_record();
+    if (rec && headers_) {
+        rec->set_headers(headers_);
+    }
+    return rec;
+}
+
+std::optional<Record> Reader::parse_raw_record() {
     if (!source_ || source_->eof()) {
         return std::nullopt;
     }
@@ -73,7 +103,7 @@ std::optional<Record> Reader::next_record() {
             if (record.empty() && current_field.empty() && state == State::StartOfField) {
                 return std::nullopt;
             }
-            add_field_to_record(record, std::move(current_field), source_->line(), source_->column());
+            add_field_to_record(record, std::move(current_field), record_start_line, source_->column());
             record.set_line_number(record_start_line);
             return record;
         }
@@ -105,14 +135,14 @@ std::optional<Record> Reader::next_record() {
                 if (ch == config_.quote) {
                     state = State::QuotedField;
                 } else if (ch == config_.delimiter) {
-                    add_field_to_record(record, std::move(current_field), source_->line(), source_->column());
+                    add_field_to_record(record, std::move(current_field), record_start_line, source_->column());
                     current_field.clear();
                     // stay in StartOfField
                 } else if (ch == '\r' || ch == '\n') {
                     if (ch == '\r' && source_->peek() == '\n') {
                         source_->get();
                     }
-                    add_field_to_record(record, std::move(current_field), source_->line(), source_->column());
+                    add_field_to_record(record, std::move(current_field), record_start_line, source_->column());
                     record.set_line_number(record_start_line);
                     return record;
                 } else {
@@ -124,14 +154,14 @@ std::optional<Record> Reader::next_record() {
 
             case State::UnquotedField: {
                 if (ch == config_.delimiter) {
-                    add_field_to_record(record, std::move(current_field), source_->line(), source_->column());
+                    add_field_to_record(record, std::move(current_field), record_start_line, source_->column());
                     current_field.clear();
                     state = State::StartOfField;
                 } else if (ch == '\r' || ch == '\n') {
                     if (ch == '\r' && source_->peek() == '\n') {
                         source_->get();
                     }
-                    add_field_to_record(record, std::move(current_field), source_->line(), source_->column());
+                    add_field_to_record(record, std::move(current_field), record_start_line, source_->column());
                     record.set_line_number(record_start_line);
                     return record;
                 } else if (ch == config_.quote) {
@@ -163,14 +193,14 @@ std::optional<Record> Reader::next_record() {
 
             case State::AfterQuote: {
                 if (ch == config_.delimiter) {
-                    add_field_to_record(record, std::move(current_field), source_->line(), source_->column());
+                    add_field_to_record(record, std::move(current_field), record_start_line, source_->column());
                     current_field.clear();
                     state = State::StartOfField;
                 } else if (ch == '\r' || ch == '\n') {
                     if (ch == '\r' && source_->peek() == '\n') {
                         source_->get();
                     }
-                    add_field_to_record(record, std::move(current_field), source_->line(), source_->column());
+                    add_field_to_record(record, std::move(current_field), record_start_line, source_->column());
                     record.set_line_number(record_start_line);
                     return record;
                 } else {

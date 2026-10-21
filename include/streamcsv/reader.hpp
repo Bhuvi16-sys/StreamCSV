@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <istream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -18,6 +19,7 @@ struct ReaderConfig {
     bool trim_leading_spaces{false};
     bool skip_empty_lines{true};
     bool strict{true};
+    bool has_header{false};                       // If true, first record is treated as column headers
     std::size_t max_field_size{16 * 1024 * 1024}; // 16 MB max per field
     std::size_t max_fields_per_record{100000};    // 100k max fields per record
 };
@@ -69,6 +71,68 @@ public:
     [[nodiscard]] std::size_t current_line() const noexcept;
     [[nodiscard]] const ReaderConfig& config() const noexcept { return config_; }
 
+    // Header support
+    [[nodiscard]] bool has_header() const noexcept;
+    [[nodiscard]] const std::vector<std::string>& header() const;
+    void set_header(std::vector<std::string> headers);
+
+    // Range-based for loop & iterator support
+    class iterator {
+    public:
+        using iterator_category = std::input_iterator_tag;
+        using value_type = Record;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const Record*;
+        using reference = const Record&;
+
+        iterator() : reader_(nullptr) {}
+        explicit iterator(Reader* reader) : reader_(reader) {
+            advance();
+        }
+
+        reference operator*() const noexcept { return current_; }
+        pointer operator->() const noexcept { return &current_; }
+
+        iterator& operator++() {
+            advance();
+            return *this;
+        }
+
+        iterator operator++(int) {
+            iterator tmp = *this;
+            advance();
+            return tmp;
+        }
+
+        bool operator==(const iterator& other) const noexcept {
+            if (!reader_ && !other.reader_) return true;
+            return reader_ == other.reader_;
+        }
+
+        bool operator!=(const iterator& other) const noexcept {
+            return !(*this == other);
+        }
+
+    private:
+        void advance() {
+            if (reader_) {
+                auto rec = reader_->next_record();
+                if (rec) {
+                    current_ = std::move(*rec);
+                } else {
+                    reader_ = nullptr;
+                    current_ = Record{};
+                }
+            }
+        }
+
+        Reader* reader_{nullptr};
+        Record current_{};
+    };
+
+    [[nodiscard]] iterator begin() { return iterator(this); }
+    [[nodiscard]] iterator end() { return iterator(); }
+
 private:
     enum class State {
         StartOfField,
@@ -77,12 +141,15 @@ private:
         AfterQuote
     };
 
+    std::optional<Record> parse_raw_record();
     void append_char_to_field(std::string& field, char ch, std::size_t line, std::size_t col);
     void add_field_to_record(Record& record, std::string field, std::size_t line, std::size_t col);
 
     std::unique_ptr<std::istream> owned_stream_;
     std::unique_ptr<CharSource> source_;
     ReaderConfig config_;
+    std::shared_ptr<const std::vector<std::string>> headers_;
+    bool header_processed_{false};
 };
 
 } // namespace streamcsv

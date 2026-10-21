@@ -22,6 +22,7 @@ add_library(streamcsv
     src/char_source.cpp
     src/reader.cpp
     src/schema.cpp
+    src/writer.cpp
 )
 
 add_library(streamcsv::streamcsv ALIAS streamcsv)
@@ -46,6 +47,10 @@ option(STREAMCSV_BUILD_EXAMPLES "Build example applications" ON)
 if(STREAMCSV_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/basic_read.cpp")
     add_executable(basic_read examples/basic_read.cpp)
     target_link_libraries(basic_read PRIVATE streamcsv::streamcsv)
+endif()
+if(STREAMCSV_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/basic_write.cpp")
+    add_executable(basic_write examples/basic_write.cpp)
+    target_link_libraries(basic_write PRIVATE streamcsv::streamcsv)
 endif()
 
 # Optional Benchmarks
