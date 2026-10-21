@@ -3,8 +3,11 @@
 #include <streamcsv/record.hpp>
 
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -21,10 +24,20 @@ struct Column {
     std::string name;
     ColumnType type{ColumnType::String};
     bool required{true};
+    std::function<bool(const std::string&)> custom_rule{nullptr};
+    std::string custom_error_message{"Custom validation rule failed"};
 
     Column() = default;
     Column(std::string name, ColumnType type = ColumnType::String, bool required = true)
         : name(std::move(name)), type(type), required(required) {}
+
+    Column(std::string name, ColumnType type, bool required,
+           std::function<bool(const std::string&)> rule, std::string error_msg)
+        : name(std::move(name)),
+          type(type),
+          required(required),
+          custom_rule(std::move(rule)),
+          custom_error_message(std::move(error_msg)) {}
 };
 
 enum class IssueSeverity {
@@ -55,6 +68,20 @@ public:
     [[nodiscard]] bool empty() const noexcept { return columns_.empty(); }
 
     [[nodiscard]] const Column& operator[](std::size_t index) const { return columns_[index]; }
+
+    [[nodiscard]] std::optional<std::size_t> find_index(std::string_view name) const noexcept {
+        for (std::size_t i = 0; i < columns_.size(); ++i) {
+            if (columns_[i].name == name) {
+                return i;
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] const Column* find_column(std::string_view name) const noexcept {
+        auto idx = find_index(name);
+        return idx ? &columns_[*idx] : nullptr;
+    }
 
 private:
     std::vector<Column> columns_;

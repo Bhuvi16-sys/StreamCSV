@@ -102,21 +102,32 @@ std::vector<ValidationIssue> Validator::validate_record(const Record& record) co
             issue.severity = IssueSeverity::Error;
             issue.message = "Required field '" + col.name + "' is empty";
             issues.push_back(issue);
-        } else if (!val.empty() && !check_type(val, col.type)) {
-            ValidationIssue issue;
-            issue.line = record.line_number();
-            issue.column = 1;
-            issue.field_index = i;
-            issue.field_name = col.name;
-            issue.severity = IssueSeverity::Error;
+        } else if (!val.empty()) {
+            if (!check_type(val, col.type)) {
+                ValidationIssue issue;
+                issue.line = record.line_number();
+                issue.column = 1;
+                issue.field_index = i;
+                issue.field_name = col.name;
+                issue.severity = IssueSeverity::Error;
 
-            std::string type_name = "String";
-            if (col.type == ColumnType::Integer) type_name = "Integer";
-            else if (col.type == ColumnType::Float) type_name = "Float";
-            else if (col.type == ColumnType::Boolean) type_name = "Boolean";
+                std::string type_name = "String";
+                if (col.type == ColumnType::Integer) type_name = "Integer";
+                else if (col.type == ColumnType::Float) type_name = "Float";
+                else if (col.type == ColumnType::Boolean) type_name = "Boolean";
 
-            issue.message = "Value '" + val + "' is not a valid " + type_name;
-            issues.push_back(issue);
+                issue.message = "Value '" + val + "' is not a valid " + type_name;
+                issues.push_back(issue);
+            } else if (col.custom_rule && !col.custom_rule(val)) {
+                ValidationIssue issue;
+                issue.line = record.line_number();
+                issue.column = 1;
+                issue.field_index = i;
+                issue.field_name = col.name;
+                issue.severity = IssueSeverity::Error;
+                issue.message = col.custom_error_message;
+                issues.push_back(issue);
+            }
         }
     }
 
