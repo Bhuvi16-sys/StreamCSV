@@ -17,6 +17,17 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Sanitizers (ASan & UBSan)
+option(STREAMCSV_ENABLE_ASAN "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+if(STREAMCSV_ENABLE_ASAN)
+    if(MSVC)
+        add_compile_options(/fsanitize=address)
+    else()
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address,undefined)
+    endif()
+endif()
+
 # Core StreamCSV Library
 add_library(streamcsv
     src/char_source.cpp
@@ -58,6 +69,13 @@ option(STREAMCSV_BUILD_BENCHMARKS "Build performance benchmarks" ON)
 if(STREAMCSV_BUILD_BENCHMARKS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmark.cpp")
     add_executable(benchmark benchmarks/benchmark.cpp)
     target_link_libraries(benchmark PRIVATE streamcsv::streamcsv)
+endif()
+
+# Optional Fuzzing Target
+option(STREAMCSV_BUILD_FUZZERS "Build fuzzing harnesses" ON)
+if(STREAMCSV_BUILD_FUZZERS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fuzz/fuzz_reader.cpp")
+    add_executable(fuzz_reader fuzz/fuzz_reader.cpp)
+    target_link_libraries(fuzz_reader PRIVATE streamcsv::streamcsv)
 endif()
 
 # Testing
