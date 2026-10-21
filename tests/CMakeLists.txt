@@ -21,3 +21,7 @@ add_test(NAME test_schema COMMAND test_schema)
 add_executable(test_writer test_writer.cpp)
 target_link_libraries(test_writer PRIVATE streamcsv::streamcsv)
 add_test(NAME test_writer COMMAND test_writer)
+
+add_executable(test_cli test_cli.cpp)
+target_link_libraries(test_cli PRIVATE streamcsv::streamcsv)
+add_test(NAME test_cli COMMAND test_cli)

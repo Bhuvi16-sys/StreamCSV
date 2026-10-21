@@ -1,5 +1,6 @@
 #include <streamcsv/csv.hpp>
 
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -11,15 +12,19 @@ namespace {
 
 void print_usage(const char* prog) {
     std::cout << "StreamCSV CLI v0.1.0\n"
-              << "A bounded-memory streaming CSV parser and validator\n\n"
+              << "A bounded-memory streaming CSV parser, inspector, and validator\n\n"
               << "Usage:\n"
-              << "  " << prog << " inspect <file.csv | ->\n"
+              << "  " << prog << " inspect <file.csv | -> [options]\n"
               << "  " << prog << " validate <file.csv | -> [col_type1 col_type2 ...]\n\n"
               << "Commands:\n"
-              << "  inspect    Report record count, column dimensions, and preview rows\n"
-              << "  validate   Validate records against types (string, int, float, bool)\n\n"
+              << "  inspect    Analyze CSV dimensions, record counts, and inspect preview rows\n"
+              << "  validate   Validate record schemas against types (string, int, float, bool)\n\n"
+              << "Options for 'inspect':\n"
+              << "  -n, --preview <N>     Number of preview rows to display (default: 5)\n"
+              << "  -d, --delimiter <C>   Field delimiter character (default: ',')\n"
+              << "  --header              First record is treated as column header\n\n"
               << "Exit Codes:\n"
-              << "  0: Success (all records valid)\n"
+              << "  0: Success (operation completed, all records valid)\n"
               << "  1: Validation issues detected\n"
               << "  2: Parse error, resource limit exceeded, or I/O failure\n";
 }
@@ -31,8 +36,12 @@ streamcsv::ColumnType parse_type(const std::string& str) {
     return streamcsv::ColumnType::String;
 }
 
-int do_inspect(std::istream& is, const std::string& name) {
-    streamcsv::Reader reader(is);
+int do_inspect(std::istream& is, const std::string& name, std::size_t max_preview, char delimiter, bool has_header) {
+    streamcsv::ReaderConfig config;
+    config.delimiter = delimiter;
+    config.has_header = has_header;
+
+    streamcsv::Reader reader(is, config);
     std::size_t count = 0;
     std::size_t max_cols = 0;
     std::size_t min_cols = 0;
@@ -49,7 +58,7 @@ int do_inspect(std::istream& is, const std::string& name) {
                 if (record->size() > max_cols) max_cols = record->size();
             }
 
-            if (preview.size() < 5) {
+            if (preview.size() < max_preview) {
                 preview.push_back(std::move(*record));
             }
         }
@@ -63,20 +72,30 @@ int do_inspect(std::istream& is, const std::string& name) {
 
     std::cout << "=== StreamCSV Inspect: " << name << " ===\n";
     std::cout << "Total Records: " << count << "\n";
+    if (reader.has_header() && !reader.header().empty()) {
+        std::cout << "Header (" << reader.header().size() << " columns): [";
+        for (std::size_t i = 0; i < reader.header().size(); ++i) {
+            std::cout << reader.header()[i] << (i + 1 < reader.header().size() ? ", " : "");
+        }
+        std::cout << "]\n";
+    }
+
     if (count > 0) {
         std::cout << "Columns:       " << min_cols;
         if (min_cols != max_cols) {
-            std::cout << " to " << max_cols << " (variable column count)";
+            std::cout << " to " << max_cols << " (WARNING: non-uniform row lengths detected)";
         }
         std::cout << "\n\n";
 
-        std::cout << "Preview (first " << preview.size() << " records):\n";
-        for (std::size_t r = 0; r < preview.size(); ++r) {
-            std::cout << "  [" << (r + 1) << "] ";
-            for (std::size_t c = 0; c < preview[r].size(); ++c) {
-                std::cout << preview[r][c] << (c + 1 < preview[r].size() ? " | " : "");
+        if (max_preview > 0 && !preview.empty()) {
+            std::cout << "Preview (first " << preview.size() << " data records):\n";
+            for (std::size_t r = 0; r < preview.size(); ++r) {
+                std::cout << "  Row " << std::setw(3) << preview[r].line_number() << " │ ";
+                for (std::size_t c = 0; c < preview[r].size(); ++c) {
+                    std::cout << preview[r][c] << (c + 1 < preview[r].size() ? " │ " : "");
+                }
+                std::cout << "\n";
             }
-            std::cout << "\n";
         }
     } else {
         std::cout << "File is empty.\n";
@@ -153,6 +172,26 @@ int main(int argc, char* argv[]) {
     }
 
     std::string filename = (argc >= 3) ? argv[2] : "-";
+    std::size_t preview_count = 5;
+    char delimiter = ',';
+    bool has_header = false;
+    std::vector<std::string> remaining_args;
+
+    // Parse options starting from index 3
+    for (int i = 3; i < argc; ++i) {
+        std::string arg = argv[i];
+        if ((arg == "-n" || arg == "--preview") && i + 1 < argc) {
+            preview_count = std::stoull(argv[++i]);
+        } else if ((arg == "-d" || arg == "--delimiter") && i + 1 < argc) {
+            std::string d_str = argv[++i];
+            delimiter = d_str.empty() ? ',' : d_str[0];
+        } else if (arg == "--header") {
+            has_header = true;
+        } else {
+            remaining_args.push_back(arg);
+        }
+    }
+
     std::unique_ptr<std::ifstream> file_stream;
     std::istream* input = &std::cin;
 
@@ -166,13 +205,8 @@ int main(int argc, char* argv[]) {
     }
 
     if (cmd == "inspect") {
-        return do_inspect(*input, filename);
+        return do_inspect(*input, filename, preview_count, delimiter, has_header);
     }
 
-    std::vector<std::string> type_args;
-    for (int i = 3; i < argc; ++i) {
-        type_args.emplace_back(argv[i]);
-    }
-
-    return do_validate(*input, type_args);
+    return do_validate(*input, remaining_args);
 }
