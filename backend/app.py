@@ -8,7 +8,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend.engine_bridge import inspect_csv, validate_csv, get_binary_path, run_benchmark
+from engine_bridge import inspect_csv, validate_csv, get_binary_path, run_benchmark, profile_csv
 
 app = FastAPI(
     title="StreamCSV Engine API",
@@ -46,6 +46,12 @@ class WriteRequest(BaseModel):
 
 class BenchmarkRequest(BaseModel):
     row_count: int = 10000
+
+
+class ProfileRequest(BaseModel):
+    csv_text: str
+    delimiter: str = ","
+    has_header: bool = True
 
 
 @app.get("/api/health")
@@ -88,6 +94,24 @@ def benchmark_endpoint(req: BenchmarkRequest) -> Dict[str, Any]:
     if req.row_count > 200_000:
         req.row_count = 200_000
     return run_benchmark(req.row_count)
+
+
+@app.post("/api/profile")
+def profile_endpoint(req: ProfileRequest) -> Dict[str, Any]:
+    """
+    Industry-grade data profiler. Runs pure-Python analysis on the full CSV (no row limit):
+    - Per-column: type inference, null%, unique count, top values, min/max/mean/median/std
+    - Outlier detection: IQR (primary) + Z-score (secondary) for numeric columns
+    - Pattern fingerprinting for string columns (Title_Case, UPPER_CASE, etc.)
+    - Per-row anomaly scoring with specific cell-level issue callouts
+    - Overall data quality score (0-100) with band label
+    """
+    return profile_csv(
+        file_content=req.csv_text.encode("utf-8"),
+        delimiter=req.delimiter,
+        has_header=req.has_header,
+    )
+
 
 
 @app.get("/api/sample")

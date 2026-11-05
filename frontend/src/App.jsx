@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   UploadCloud, FileSpreadsheet, CheckCircle2, AlertTriangle,
   XCircle, Terminal, Settings2, Download, RefreshCw, Sliders,
   ShieldCheck, Layers, Zap, FileText, Table2,
-  Plus, Trash2, ChevronDown, ChevronRight, Play, ArrowDownToLine
+  Plus, Trash2, ChevronDown, ChevronRight, Play, ArrowDownToLine,
+  TrendingUp, Activity, BarChart2, Hash, Type, ToggleLeft, Sparkles,
+  AlertCircle, Info, FlaskConical
 } from 'lucide-react';
 
 export default function App() {
@@ -30,15 +32,22 @@ export default function App() {
   // Writer State — Step 6: start empty (1 header + 1 blank data row)
   const [writerDelim, setWriterDelim] = useState(',');
   const [writerQuote, setWriterQuote] = useState('"');
+  const rowIdCounter = useRef(2);
+  const makeRow = (cells) => ({ id: rowIdCounter.current++, cells });
   const [writerRecords, setWriterRecords] = useState([
-    ['Column 1', 'Column 2'],
-    ['', ''],
+    { id: 0, cells: ['Column 1', 'Column 2'] },
+    { id: 1, cells: ['', ''] },
   ]);
 
   // Step 7: Benchmark State
   const [benchmarkData, setBenchmarkData] = useState(null);
   const [benchmarkLoading, setBenchmarkLoading] = useState(false);
   const [benchmarkRowCount, setBenchmarkRowCount] = useState(10000);
+
+  // Data Quality Profiler State
+  const [profileData, setProfileData] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [expandedAnomalyRow, setExpandedAnomalyRow] = useState(null);
 
   // ── On mount: health, metrics, sample data ──
   useEffect(() => {
@@ -136,6 +145,29 @@ export default function App() {
     }
   };
 
+  const runProfile = async (textToProfile = csvText) => {
+    if (!textToProfile.trim()) return;
+    setProfileLoading(true);
+    setProfileData(null);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csv_text: textToProfile,
+          delimiter,
+          has_header: hasHeader,
+        }),
+      });
+      const data = await res.json();
+      setProfileData(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   // Step 7: live benchmark runner
   const runBenchmark = async () => {
     setBenchmarkLoading(true);
@@ -173,7 +205,7 @@ export default function App() {
       const res = await fetch('/api/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ records: writerRecords, delimiter: writerDelim, quote: writerQuote }),
+        body: JSON.stringify({ records: writerRecords.map(r => r.cells), delimiter: writerDelim, quote: writerQuote }),
       });
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -188,40 +220,52 @@ export default function App() {
 
   // ── Step 6: Writer table operations ──
   const addWriterRow = () => {
-    const colCount = writerRecords[0]?.length || 1;
-    setWriterRecords(prev => [...prev, Array(colCount).fill('')]);
+    const colCount = writerRecords[0]?.cells.length || 1;
+    setWriterRecords(prev => [...prev, makeRow(Array(colCount).fill(''))]);
   };
 
-  const deleteWriterRow = idx => {
-    if (idx === 0 || writerRecords.length <= 2) return;
-    setWriterRecords(prev => prev.filter((_, i) => i !== idx));
+  const deleteWriterRow = id => {
+    setWriterRecords(prev => {
+      if (prev.length <= 2) return prev; // keep at least header + 1 row
+      return prev.filter(r => r.id !== id);
+    });
   };
 
   const addWriterColumn = () => {
     setWriterRecords(prev =>
-      prev.map((row, i) => [...row, i === 0 ? `Column ${row.length + 1}` : ''])
+      prev.map((row, i) => ({
+        ...row,
+        cells: [...row.cells, i === 0 ? `Column ${row.cells.length + 1}` : ''],
+      }))
     );
   };
 
   const deleteWriterColumn = colIdx => {
-    if ((writerRecords[0]?.length || 0) <= 1) return;
-    setWriterRecords(prev => prev.map(row => row.filter((_, i) => i !== colIdx)));
+    if ((writerRecords[0]?.cells.length || 0) <= 1) return;
+    setWriterRecords(prev =>
+      prev.map(row => ({ ...row, cells: row.cells.filter((_, i) => i !== colIdx) }))
+    );
   };
 
-  const updateWriterCell = (rIdx, cIdx, value) => {
-    setWriterRecords(prev => {
-      const next = prev.map(r => [...r]);
-      next[rIdx][cIdx] = value;
-      return next;
-    });
+  const updateWriterCell = (id, cIdx, value) => {
+    setWriterRecords(prev =>
+      prev.map(row =>
+        row.id === id
+          ? { ...row, cells: row.cells.map((c, i) => (i === cIdx ? value : c)) }
+          : row
+      )
+    );
   };
 
   const importFromInspector = () => {
     if (!inspectData?.success) return;
-    const rows = [];
-    if (inspectData.headers?.length > 0) rows.push([...inspectData.headers]);
-    inspectData.preview_rows?.forEach(r => rows.push([...r]));
-    if (rows.length > 0) setWriterRecords(rows);
+    const rawRows = [];
+    if (inspectData.headers?.length > 0) rawRows.push([...inspectData.headers]);
+    inspectData.preview_rows?.forEach(r => rawRows.push([...r]));
+    if (rawRows.length > 0) {
+      rowIdCounter.current = 0;
+      setWriterRecords(rawRows.map(cells => makeRow(cells)));
+    }
   };
 
   // ── Step 5: per-column issue map ──
@@ -291,9 +335,10 @@ export default function App() {
 
         {/* Navigation Tabs */}
         <div className="flex space-x-2 border-b border-slate-800 pb-2">
-          {[
+        {[
             { id: 'inspect',   Icon: FileSpreadsheet, label: 'Inspector & Visualizer' },
             { id: 'validate',  Icon: ShieldCheck,     label: 'Schema Validator' },
+            { id: 'profile',   Icon: FlaskConical,    label: 'Data Quality Studio' },
             { id: 'writer',    Icon: Table2,          label: 'RFC 4180 Writer' },
             { id: 'benchmark', Icon: Zap,             label: 'Engine Telemetry' },
           ].map(({ id, Icon, label }) => (
@@ -302,12 +347,22 @@ export default function App() {
               onClick={() => setActiveTab(id)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2 ${
                 activeTab === id
-                  ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
+                  ? id === 'profile'
+                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20'
+                    : 'bg-sky-500 text-white shadow-lg shadow-sky-500/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
               <Icon className="h-4 w-4" />
               <span>{label}</span>
+              {id === 'profile' && profileData && (
+                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${
+                  profileData.quality_score >= 90 ? 'bg-emerald-500/20 text-emerald-400' :
+                  profileData.quality_score >= 75 ? 'bg-sky-500/20 text-sky-400' :
+                  profileData.quality_score >= 50 ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-red-500/20 text-red-400'
+                }`}>{profileData.quality_score}</span>
+              )}
             </button>
           ))}
         </div>
@@ -725,9 +780,324 @@ export default function App() {
         )}
 
         {/* ═══════════════════════════════════════
-            TAB 3 · RFC 4180 WRITER
+            TAB 3 · DATA QUALITY STUDIO
+            ═══════════════════════════════════════ */}
+        {activeTab === 'profile' && (() => {
+          const scoreColor = !profileData ? 'text-slate-400' :
+            profileData.quality_score >= 90 ? 'text-emerald-400' :
+            profileData.quality_score >= 75 ? 'text-sky-400' :
+            profileData.quality_score >= 50 ? 'text-amber-400' : 'text-red-400';
+
+          const scoreBg = !profileData ? 'border-slate-700' :
+            profileData.quality_score >= 90 ? 'border-emerald-500/30 bg-emerald-500/5' :
+            profileData.quality_score >= 75 ? 'border-sky-500/30 bg-sky-500/5' :
+            profileData.quality_score >= 50 ? 'border-amber-500/30 bg-amber-500/5' :
+            'border-red-500/30 bg-red-500/5';
+
+          const typeIcon = (t) => {
+            if (t === 'int') return <Hash className="h-3 w-3 text-sky-400" />;
+            if (t === 'float') return <TrendingUp className="h-3 w-3 text-violet-400" />;
+            if (t === 'bool') return <ToggleLeft className="h-3 w-3 text-emerald-400" />;
+            return <Type className="h-3 w-3 text-amber-400" />;
+          };
+
+          const typeLabel = (t) => ({int:'Integer',float:'Float',bool:'Boolean',string:'String',empty:'Empty'}[t] || t);
+
+          return (
+            <div className="space-y-6">
+
+              {/* ── Header + Run button ── */}
+              <div className="flex items-start justify-between flex-wrap gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-violet-400" />
+                    Data Quality Studio
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Industry-grade profiling — IQR + Z-score outliers, pattern fingerprinting, null analysis, quality scoring.
+                    <span className="text-slate-500 ml-1">No row limit — analyzes your entire dataset.</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => runProfile(csvText)}
+                  disabled={profileLoading || !csvText.trim()}
+                  className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-violet-600/20 transition flex items-center space-x-2 disabled:opacity-50"
+                >
+                  {profileLoading
+                    ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    : <FlaskConical className="h-3.5 w-3.5" />}
+                  <span>{profileLoading ? 'Profiling...' : 'Run Deep Profile'}</span>
+                </button>
+              </div>
+
+              {!profileData && !profileLoading && (
+                <div className="text-center py-16 border border-dashed border-slate-800 rounded-xl">
+                  <FlaskConical className="h-12 w-12 text-slate-700 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500 font-medium">No profile yet</p>
+                  <p className="text-xs text-slate-600 mt-1">Load or paste CSV data, then click "Run Deep Profile"</p>
+                </div>
+              )}
+
+              {profileData?.success && (() => {
+                const p = profileData;
+                return (
+                  <>
+                    {/* ── Quality Score + Summary ── */}
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+
+                      {/* Big score */}
+                      <div className={`md:col-span-1 border rounded-xl p-5 flex flex-col items-center justify-center ${scoreBg}`}>
+                        <div className="text-[10px] text-slate-400 uppercase tracking-widest mb-1">Quality Score</div>
+                        <div className={`text-5xl font-black font-mono ${scoreColor}`}>{p.quality_score}</div>
+                        <div className={`text-xs font-semibold mt-1 ${scoreColor}`}>{p.quality_band}</div>
+                        {/* Mini bar */}
+                        <div className="w-full mt-3 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-700 ${
+                              p.quality_score >= 90 ? 'bg-emerald-500' :
+                              p.quality_score >= 75 ? 'bg-sky-500' :
+                              p.quality_score >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                            }`}
+                            style={{ width: `${p.quality_score}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Stats cards */}
+                      {[
+                        { label: 'Total Rows', value: p.num_rows.toLocaleString(), icon: <BarChart2 className="h-4 w-4 text-sky-400" />, sub: `${p.num_cols} columns` },
+                        { label: 'Null Cells', value: p.total_null_count, icon: <AlertCircle className="h-4 w-4 text-amber-400" />, sub: p.total_null_count === 0 ? '✓ No nulls' : 'missing values', color: p.total_null_count > 0 ? 'text-amber-400' : 'text-emerald-400' },
+                        { label: 'Type Errors', value: p.total_type_errors, icon: <XCircle className="h-4 w-4 text-red-400" />, sub: p.total_type_errors === 0 ? '✓ No violations' : 'type violations', color: p.total_type_errors > 0 ? 'text-red-400' : 'text-emerald-400' },
+                        { label: 'Outliers', value: p.total_outliers, icon: <Activity className="h-4 w-4 text-violet-400" />, sub: p.total_outliers === 0 ? '✓ None detected' : 'statistical outliers', color: p.total_outliers > 0 ? 'text-violet-400' : 'text-emerald-400' },
+                      ].map((s, i) => (
+                        <div key={i} className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider">{s.label}</span>
+                            {s.icon}
+                          </div>
+                          <div className={`text-2xl font-bold font-mono ${s.color || 'text-white'}`}>{typeof s.value === 'number' ? s.value.toLocaleString() : s.value}</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">{s.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* ── Column Profiles ── */}
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <BarChart2 className="h-3.5 w-3.5 text-sky-400" /> Column Profiles
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {p.column_profiles.map((col, ci) => {
+                          const hasIssue = col.null_count > 0 || col.type_error_count > 0 || col.outlier_count > 0 || col.pattern_anomaly_count > 0;
+                          const borderClass = hasIssue
+                            ? (col.type_error_count > 0 ? 'border-red-500/30' : 'border-amber-500/30')
+                            : 'border-slate-800';
+                          return (
+                            <div key={ci} className={`bg-slate-900/60 border rounded-xl p-4 space-y-3 ${borderClass}`}>
+                              {/* Header */}
+                              <div className="flex items-center justify-between">
+                                <div className="min-w-0">
+                                  <span className="text-xs font-semibold text-slate-100 block truncate">{col.name}</span>
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    {typeIcon(col.inferred_type)}
+                                    <span className="text-[10px] text-slate-400">{typeLabel(col.inferred_type)}</span>
+                                  </div>
+                                </div>
+                                {hasIssue
+                                  ? <AlertTriangle className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
+                                  : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                                }
+                              </div>
+
+                              {/* Stats grid */}
+                              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
+                                <div className="bg-slate-950/60 rounded p-1.5">
+                                  <div className="text-slate-500">Null %</div>
+                                  <div className={col.null_count > 0 ? 'text-amber-400' : 'text-emerald-400'}>
+                                    {col.null_pct}% ({col.null_count})
+                                  </div>
+                                </div>
+                                <div className="bg-slate-950/60 rounded p-1.5">
+                                  <div className="text-slate-500">Unique</div>
+                                  <div className="text-slate-200">{col.unique_count} <span className="text-slate-500">({col.cardinality_pct}%)</span></div>
+                                </div>
+
+                                {col.inferred_type === 'int' || col.inferred_type === 'float' ? (<>
+                                  <div className="bg-slate-950/60 rounded p-1.5">
+                                    <div className="text-slate-500">Min / Max</div>
+                                    <div className="text-slate-200">{col.min} / {col.max}</div>
+                                  </div>
+                                  <div className="bg-slate-950/60 rounded p-1.5">
+                                    <div className="text-slate-500">Mean ± Std</div>
+                                    <div className="text-slate-200">{col.mean} <span className="text-slate-500">±{col.std}</span></div>
+                                  </div>
+                                  <div className="bg-slate-950/60 rounded p-1.5">
+                                    <div className="text-slate-500">Median / IQR</div>
+                                    <div className="text-slate-200">{col.median} <span className="text-slate-500">({col.iqr})</span></div>
+                                  </div>
+                                  <div className="bg-slate-950/60 rounded p-1.5">
+                                    <div className="text-slate-500">Outliers</div>
+                                    <div className={col.outlier_count > 0 ? 'text-violet-400' : 'text-emerald-400'}>
+                                      {col.outlier_count} {col.outlier_count > 0 ? '⚠' : '✓'}
+                                    </div>
+                                  </div>
+                                </>) : (<>
+                                  <div className="bg-slate-950/60 rounded p-1.5">
+                                    <div className="text-slate-500">Pattern</div>
+                                    <div className="text-slate-200 truncate" title={col.dominant_pattern}>{col.dominant_pattern || '—'}</div>
+                                  </div>
+                                  <div className="bg-slate-950/60 rounded p-1.5">
+                                    <div className="text-slate-500">Anomalies</div>
+                                    <div className={col.pattern_anomaly_count > 0 ? 'text-amber-400' : 'text-emerald-400'}>
+                                      {col.pattern_anomaly_count} {col.pattern_anomaly_count > 0 ? '⚠' : '✓'}
+                                    </div>
+                                  </div>
+                                </>)}
+
+                                {col.type_error_count > 0 && (
+                                  <div className="col-span-2 bg-red-500/10 border border-red-500/20 rounded p-1.5">
+                                    <div className="text-red-400">⛔ {col.type_error_count} type error(s) — rows: {col.type_error_rows?.slice(0,5).join(', ')}{col.type_error_rows?.length > 5 ? '...' : ''}</div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Top values for strings */}
+                              {col.top_values?.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Top Values</div>
+                                  {col.top_values.slice(0, 3).map((tv, ti) => (
+                                    <div key={ti} className="flex items-center gap-2">
+                                      <div
+                                        className="h-1 bg-sky-500/40 rounded-full flex-shrink-0"
+                                        style={{ width: `${Math.round(tv.count / p.num_rows * 100)}%`, minWidth: '4px', maxWidth: '60%' }}
+                                      />
+                                      <span className="text-[10px] font-mono text-slate-300 truncate">{tv.value}</span>
+                                      <span className="text-[10px] text-slate-500 ml-auto flex-shrink-0">{tv.count}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── Anomalous Rows Explorer ── */}
+                    {p.anomalous_rows.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+                          <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                          Anomalous Rows
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                            {p.anomalous_rows.length} row{p.anomalous_rows.length !== 1 ? 's' : ''} flagged
+                          </span>
+                          <span className="text-slate-600 font-normal normal-case">— sorted by severity</span>
+                        </h4>
+                        <div className="space-y-2">
+                          {p.anomalous_rows.map((ar) => {
+                            const isExpanded = expandedAnomalyRow === ar.row;
+                            const errorCount = ar.issues.flatMap(i => i.issues).filter(i => i.severity === 'ERROR').length;
+                            const warnCount = ar.issues.flatMap(i => i.issues).filter(i => i.severity === 'WARNING').length;
+                            return (
+                              <div key={ar.row} className="border border-slate-800 rounded-xl overflow-hidden hover:border-slate-700 transition">
+                                <button
+                                  className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-slate-800/20 transition"
+                                  onClick={() => setExpandedAnomalyRow(isExpanded ? null : ar.row)}
+                                >
+                                  {/* Row number */}
+                                  <span className="text-[10px] font-mono text-slate-500 w-14 flex-shrink-0">Row {ar.row}</span>
+
+                                  {/* Cell preview */}
+                                  <div className="flex gap-2 flex-1 min-w-0 overflow-hidden">
+                                    {ar.cells.map((cell, ci) => {
+                                      const cellHasIssue = ar.issues.some(iss => iss.col_index === ci);
+                                      return (
+                                        <span key={ci} className={`text-[10px] font-mono px-2 py-0.5 rounded truncate max-w-[100px] ${
+                                          cellHasIssue
+                                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                            : 'bg-slate-800 text-slate-400'
+                                        }`} title={`${p.headers[ci]}: ${cell}`}>
+                                          {cell || <span className="italic text-slate-600">empty</span>}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Issue badges */}
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    {errorCount > 0 && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-red-500/20 text-red-400 border border-red-500/30">
+                                        {errorCount} ERR
+                                      </span>
+                                    )}
+                                    {warnCount > 0 && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded font-mono bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                                        {warnCount} WARN
+                                      </span>
+                                    )}
+                                    {isExpanded
+                                      ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                                      : <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                                    }
+                                  </div>
+                                </button>
+
+                                {/* Expanded detail */}
+                                {isExpanded && (
+                                  <div className="border-t border-slate-800 bg-slate-950/60 px-4 py-3 space-y-2">
+                                    {ar.issues.map((colIssue, ix) => (
+                                      <div key={ix} className="flex items-start gap-3">
+                                        <span className="text-[10px] font-mono text-sky-400 w-28 flex-shrink-0 pt-0.5">
+                                          {colIssue.col_name}
+                                        </span>
+                                        <span className="text-[10px] font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-slate-300 flex-shrink-0">
+                                          "{colIssue.cell_value || '<empty>'}"
+                                        </span>
+                                        <div className="space-y-1">
+                                          {colIssue.issues.map((iss, ji) => (
+                                            <div key={ji} className={`text-[10px] flex items-center gap-1.5 ${
+                                              iss.severity === 'ERROR' ? 'text-red-400' : 'text-amber-400'
+                                            }`}>
+                                              {iss.severity === 'ERROR'
+                                                ? <XCircle className="h-3 w-3 flex-shrink-0" />
+                                                : <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                                              }
+                                              <span className="font-mono font-semibold">[{iss.type}]</span>
+                                              <span>{iss.detail}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {p.anomalous_rows.length === 0 && (
+                      <div className="text-center py-8 border border-emerald-500/20 bg-emerald-500/5 rounded-xl">
+                        <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto mb-2" />
+                        <p className="text-sm font-semibold text-emerald-400">No anomalies detected</p>
+                        <p className="text-xs text-slate-500 mt-1">All rows passed type checks, pattern consistency, and outlier detection.</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          );
+        })()}
+
+        {/* ═══════════════════════════════════════
+            TAB 4 · RFC 4180 WRITER
             ═══════════════════════════════════════ */}
         {activeTab === 'writer' && (
+
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4">
 
             {/* Header row */}
@@ -803,7 +1173,7 @@ export default function App() {
                 <span>Add Column</span>
               </button>
               <span className="text-slate-600 font-mono text-[10px] ml-2">
-                {writerRecords.length - 1} data row(s) · {writerRecords[0]?.length ?? 0} col(s)
+                {writerRecords.length - 1} data row(s) · {writerRecords[0]?.cells.length ?? 0} col(s)
               </span>
             </div>
 
@@ -813,11 +1183,11 @@ export default function App() {
                 <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
                   <tr>
                     <th className="py-2 px-3 w-12 text-slate-600 text-[10px]">#</th>
-                    {writerRecords[0]?.map((_, cIdx) => (
+                    {writerRecords[0]?.cells.map((_, cIdx) => (
                       <th key={cIdx} className="py-2 px-2">
                         <div className="flex items-center space-x-1">
                           <span className="text-slate-500 text-[10px]">Col {cIdx + 1}</span>
-                          {(writerRecords[0]?.length ?? 0) > 1 && (
+                          {(writerRecords[0]?.cells.length ?? 0) > 1 && (
                             <button
                               onClick={() => deleteWriterColumn(cIdx)}
                               className="text-slate-700 hover:text-red-400 transition"
@@ -834,16 +1204,16 @@ export default function App() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {writerRecords.map((row, rIdx) => (
-                    <tr key={rIdx} className={rIdx === 0 ? 'bg-slate-900/50' : 'hover:bg-slate-800/20'}>
+                    <tr key={row.id} className={rIdx === 0 ? 'bg-slate-900/50' : 'hover:bg-slate-800/20'}>
                       <td className="py-1.5 px-3 text-slate-600 font-mono text-[10px]">
                         {rIdx === 0 ? 'HDR' : rIdx}
                       </td>
-                      {row.map((cell, cIdx) => (
+                      {row.cells.map((cell, cIdx) => (
                         <td key={cIdx} className="py-1 px-2">
                           <input
                             type="text"
                             value={cell}
-                            onChange={e => updateWriterCell(rIdx, cIdx, e.target.value)}
+                            onChange={e => updateWriterCell(row.id, cIdx, e.target.value)}
                             className={`w-full min-w-[80px] bg-transparent border border-transparent hover:border-slate-700 focus:border-sky-500/50 focus:bg-slate-950 rounded px-2 py-1 text-xs outline-none transition ${
                               rIdx === 0 ? 'font-semibold text-sky-300' : 'text-slate-200'
                             }`}
@@ -853,7 +1223,7 @@ export default function App() {
                       <td className="px-1 py-1">
                         {rIdx > 0 && (
                           <button
-                            onClick={() => deleteWriterRow(rIdx)}
+                            onClick={() => deleteWriterRow(row.id)}
                             className="text-slate-700 hover:text-red-400 transition p-1"
                             title="Delete row"
                           >
