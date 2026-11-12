@@ -6,20 +6,46 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
       colors: {
-        brand: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
+        obsidian: {
+          0: '#000000',
+          50: '#0a0a0a',
+          100: '#111111',
+          150: '#171717',
+          200: '#1c1c1c',
+          300: '#262626',
+          400: '#404040',
+          500: '#525252',
+          600: '#737373',
+          700: '#a1a1aa',
+          800: '#d4d4d8',
+          900: '#f4f4f5',
         }
-      }
+      },
+      letterSpacing: {
+        tighter: '-0.03em',
+        tight: '-0.02em',
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+      },
+      keyframes: {
+        'fade-up': {
+          '0%': { opacity: 0, transform: 'translateY(12px)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
+        },
+        'bar-fill': {
+          '0%': { width: '0%' },
+          '100%': { width: 'var(--bar-width)' },
+        },
+      },
+      animation: {
+        'fade-up': 'fade-up 0.4s ease both',
+        'bar-fill': 'bar-fill 0.8s cubic-bezier(0.16,1,0.3,1) both',
+      },
     },
   },
   plugins: [],
