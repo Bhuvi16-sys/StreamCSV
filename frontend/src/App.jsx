@@ -11,7 +11,7 @@ import {
 export default function App() {
   const [activeTab, setActiveTab] = useState('inspect');
   const [csvText, setCsvText] = useState('');
-  const [fileName, setFileName] = useState('sample.csv');
+  const [fileName, setFileName] = useState('');
   const [loading, setLoading] = useState(false);
   const [engineHealth, setEngineHealth] = useState(null);
   // Step 3: live engine metadata
@@ -61,8 +61,6 @@ export default function App() {
       .then(res => res.json())
       .then(data => setEngineMetrics(data))
       .catch(() => {});
-
-    loadSampleData();
   }, []);
 
   const loadSampleData = async () => {
