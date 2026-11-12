@@ -10,13 +10,23 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# Locate the compiled streamcsv binary
+# Locate the compiled streamcsv binary (cross-platform: Windows .exe or Linux binary)
+import sys as _sys
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
-STREAMCSV_BIN = WORKSPACE_DIR / "streamcsv.exe"
-if not STREAMCSV_BIN.exists():
-    STREAMCSV_BIN = WORKSPACE_DIR / "build" / "streamcsv.exe"
-if not STREAMCSV_BIN.exists():
-    STREAMCSV_BIN = WORKSPACE_DIR / "streamcsv"
+
+def _find_binary() -> Path:
+    candidates = [
+        WORKSPACE_DIR / ("streamcsv.exe" if _sys.platform == "win32" else "streamcsv"),
+        WORKSPACE_DIR / "build" / ("streamcsv.exe" if _sys.platform == "win32" else "streamcsv"),
+        WORKSPACE_DIR / "build" / "streamcsv.exe",   # fallback
+        WORKSPACE_DIR / "streamcsv.exe",              # fallback
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return candidates[0]  # will trigger clear error in get_binary_path()
+
+STREAMCSV_BIN = _find_binary()
 
 
 def get_binary_path() -> Path:
