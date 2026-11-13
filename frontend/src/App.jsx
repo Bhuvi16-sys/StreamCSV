@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+// In production → https://streamcsv.onrender.com  (set via VITE_API_BASE in Vercel)
+// In dev        → '' (empty = relative URL, Vite proxy handles it)
+const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 import {
   UploadCloud, FileSpreadsheet, CheckCircle2, AlertTriangle,
   XCircle, Terminal, Settings2, Download, RefreshCw, Sliders,
@@ -226,12 +230,12 @@ export default function App() {
 
   // ── On mount: health + metrics ──
   useEffect(() => {
-    fetch('/api/health')
+    fetch(`${API_BASE}/api/health`)
       .then(res => res.json())
       .then(data => setEngineHealth(data))
       .catch(() => setEngineHealth({ status: 'offline' }));
 
-    fetch('/api/metrics')
+    fetch(`${API_BASE}/api/metrics`)
       .then(res => res.json())
       .then(data => setEngineMetrics(data))
       .catch(() => {});
@@ -239,7 +243,7 @@ export default function App() {
 
   const loadSampleData = async () => {
     try {
-      const res = await fetch('/api/sample');
+      const res = await fetch(`${API_BASE}/api/sample`);
       const data = await res.json();
       setCsvText(data.csv_text);
       setFileName('sample.csv');
@@ -255,7 +259,7 @@ export default function App() {
     setValidateData(null);
     setRawOutputOpen(false);
     try {
-      const res = await fetch('/api/inspect/json', {
+      const res = await fetch(`${API_BASE}/api/inspect/json`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -291,7 +295,7 @@ export default function App() {
     if (!csvText.trim()) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/validate/json', {
+      const res = await fetch(`${API_BASE}/api/validate/json`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csv_text: csvText, column_types: schemaColumns.map(c => c.type) }),
@@ -310,7 +314,7 @@ export default function App() {
     setProfileLoading(true);
     setProfileData(null);
     try {
-      const res = await fetch('/api/profile', {
+      const res = await fetch(`${API_BASE}/api/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csv_text: textToProfile, delimiter, has_header: hasHeader }),
@@ -327,7 +331,7 @@ export default function App() {
   const runBenchmark = async () => {
     setBenchmarkLoading(true);
     try {
-      const res = await fetch('/api/benchmark', {
+      const res = await fetch(`${API_BASE}/api/benchmark`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ row_count: benchmarkRowCount }),
@@ -357,7 +361,7 @@ export default function App() {
 
   const handleDownloadGenerated = async () => {
     try {
-      const res = await fetch('/api/write', {
+      const res = await fetch(`${API_BASE}/api/write`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ records: writerRecords.map(r => r.cells), delimiter: writerDelim, quote: writerQuote }),
