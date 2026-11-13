@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://streamcsv-api.onrender.com/api/:path*"
+      "destination": "https://streamcsv.onrender.com/api/:path*"
     }
   ],
   "headers": [
