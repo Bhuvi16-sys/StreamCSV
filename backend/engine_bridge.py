@@ -15,21 +15,28 @@ import sys as _sys
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent
 
 def _find_binary() -> Path:
+    bin_name = "streamcsv.exe" if _sys.platform == "win32" else "streamcsv"
     candidates = [
-        WORKSPACE_DIR / ("streamcsv.exe" if _sys.platform == "win32" else "streamcsv"),
-        WORKSPACE_DIR / "build" / ("streamcsv.exe" if _sys.platform == "win32" else "streamcsv"),
-        WORKSPACE_DIR / "build" / "streamcsv.exe",   # fallback
-        WORKSPACE_DIR / "streamcsv.exe",              # fallback
+        WORKSPACE_DIR / bin_name,
+        WORKSPACE_DIR / "build" / bin_name,
+        WORKSPACE_DIR / "build" / "src" / bin_name,
+        WORKSPACE_DIR / "build" / "src" / "cli" / bin_name,
+        Path("/app") / bin_name,
+        Path("/app/build") / bin_name,
+        Path(f"./{bin_name}").resolve(),
     ]
     for c in candidates:
         if c.exists():
             return c
-    return candidates[0]  # will trigger clear error in get_binary_path()
+    return candidates[0]
 
 STREAMCSV_BIN = _find_binary()
 
 
 def get_binary_path() -> Path:
+    global STREAMCSV_BIN
+    if not STREAMCSV_BIN.exists():
+        STREAMCSV_BIN = _find_binary()
     if not STREAMCSV_BIN.exists():
         raise FileNotFoundError(
             f"StreamCSV binary not found at '{STREAMCSV_BIN}'. Please build the project first."

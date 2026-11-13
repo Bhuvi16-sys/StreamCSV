@@ -9,7 +9,7 @@ WORKDIR /app
 COPY . .
 
 # Compile the C++17 streaming engine for Linux
-RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTREAMCSV_BUILD_TESTS=OFF -DSTREAMCSV_BUILD_BENCHMARKS=OFF -DSTREAMCSV_BUILD_FUZZERS=OFF && cmake --build build --target streamcsv_cli
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSTREAMCSV_BUILD_TESTS=OFF -DSTREAMCSV_BUILD_BENCHMARKS=OFF -DSTREAMCSV_BUILD_FUZZERS=OFF && cmake --build build --target streamcsv_cli && cp build/streamcsv /app/streamcsv && chmod +x /app/streamcsv
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r backend/requirements.txt

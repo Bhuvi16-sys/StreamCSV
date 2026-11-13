@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-// In production → https://streamcsv.onrender.com  (set via VITE_API_BASE in Vercel)
-// In dev        → '' (empty = relative URL, Vite proxy handles it)
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
+// In production → https://streamcsv.onrender.com (or VITE_API_BASE if overridden)
+// In dev        → '' (relative URL, proxied to localhost:8000 by Vite)
+const API_BASE =
+  import.meta.env.VITE_API_BASE ||
+  (import.meta.env.DEV ? '' : 'https://streamcsv.onrender.com');
 import {
   UploadCloud, FileSpreadsheet, CheckCircle2, AlertTriangle,
   XCircle, Terminal, Settings2, Download, RefreshCw, Sliders,
@@ -228,29 +230,48 @@ export default function App() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [expandedAnomalyRow, setExpandedAnomalyRow] = useState(null);
 
-  // ── On mount: health + metrics ──
+  // ── On mount: health + metrics with auto-recheck for cold starts ──
   useEffect(() => {
-    fetch(`${API_BASE}/api/health`)
-      .then(res => res.json())
-      .then(data => setEngineHealth(data))
-      .catch(() => setEngineHealth({ status: 'offline' }));
+    const checkHealth = () => {
+      fetch(`${API_BASE}/api/health`)
+        .then(res => res.json())
+        .then(data => setEngineHealth(data))
+        .catch(() => setEngineHealth({ status: 'offline' }));
 
-    fetch(`${API_BASE}/api/metrics`)
-      .then(res => res.json())
-      .then(data => setEngineMetrics(data))
-      .catch(() => {});
+      fetch(`${API_BASE}/api/metrics`)
+        .then(res => res.json())
+        .then(data => setEngineMetrics(data))
+        .catch(() => {});
+    };
+
+    checkHealth();
+    const timer = setInterval(checkHealth, 10000);
+    return () => clearInterval(timer);
   }, []);
 
   const loadSampleData = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/sample`);
-      const data = await res.json();
-      setCsvText(data.csv_text);
-      setFileName('sample.csv');
-      runInspect(data.csv_text);
+      if (res.ok) {
+        const data = await res.json();
+        setCsvText(data.csv_text);
+        setFileName('sample.csv');
+        runInspect(data.csv_text);
+        return;
+      }
     } catch (e) {
-      console.error('Failed to load sample', e);
+      console.warn('Backend waking up or offline, using built-in sample data', e);
     }
+    // Reliable offline fallback if Render is waking up
+    const sample =
+      "id,name,email,score,active,bio\n" +
+      "101,Alice Smith,alice@example.com,98.5,true,\"Senior Platform Engineer\"\n" +
+      "102,Bob Jones,bob@example.com,84.0,false,\"Product \\\"Specialist\\\" & Designer\"\n" +
+      "103,Charlie Brown,charlie@example.com,91.25,true,\"DevOps \\\"Kubernetes\\\" Lead\"\n" +
+      "104,Diana Prince,diana@example.com,99.9,true,\"Engineering Director\"\n";
+    setCsvText(sample);
+    setFileName('sample.csv');
+    runInspect(sample);
   };
 
   const runInspect = async (textToInspect = csvText) => {
@@ -269,6 +290,10 @@ export default function App() {
           has_header: hasHeader,
         }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 160)}`);
+      }
       const data = await res.json();
       setInspectData(data);
       if (data.headers && data.headers.length > 0) {
@@ -278,6 +303,10 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
+      setInspectData({
+        success: false,
+        error: `Could not connect to engine (${API_BASE || 'local'}): ${e.message}. Note: Render free tier takes ~30-45s to wake up on cold start.`,
+      });
     } finally {
       setLoading(false);
     }
@@ -300,10 +329,21 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csv_text: csvText, column_types: schemaColumns.map(c => c.type) }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 160)}`);
+      }
       const data = await res.json();
       setValidateData(data);
     } catch (e) {
       console.error(e);
+      setValidateData({
+        success: false,
+        exit_code: 1,
+        records_processed: 0,
+        issues_count: 1,
+        issues: [{ severity: 'Error', line: 1, field_index: 0, field_name: 'Engine', message: `Backend connection error: ${e.message}` }],
+      });
     } finally {
       setLoading(false);
     }
@@ -319,10 +359,18 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csv_text: textToProfile, delimiter, has_header: hasHeader }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 160)}`);
+      }
       const data = await res.json();
       setProfileData(data);
     } catch (e) {
       console.error(e);
+      setProfileData({
+        success: false,
+        error: `Backend connection error: ${e.message}`,
+      });
     } finally {
       setProfileLoading(false);
     }
@@ -336,10 +384,18 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ row_count: benchmarkRowCount }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 160)}`);
+      }
       const data = await res.json();
       setBenchmarkData(data);
     } catch (e) {
       console.error(e);
+      setBenchmarkData({
+        success: false,
+        error: `Backend connection error: ${e.message}`,
+      });
     } finally {
       setBenchmarkLoading(false);
     }
@@ -456,8 +512,14 @@ export default function App() {
         <div className="flex items-center gap-3">
           <GhostButton onClick={loadSampleData} icon={RefreshCw}>Load Sample</GhostButton>
           <div className="flex items-center gap-2 text-[11px] font-mono px-3 py-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <span className={`h-1.5 w-1.5 rounded-full ${engineHealth?.status === 'healthy' ? 'bg-emerald-400 animate-pulse-dot' : 'bg-amber-400'}`} />
-            <span className="text-zinc-400">{engineHealth?.status === 'healthy' ? 'Engine Online' : 'Connecting…'}</span>
+            <span className={`h-1.5 w-1.5 rounded-full ${engineHealth?.status === 'healthy' ? 'bg-emerald-400 animate-pulse-dot' : engineHealth?.status === 'degraded' ? 'bg-red-400' : 'bg-amber-400 animate-pulse'}`} />
+            <span className="text-zinc-400">
+              {engineHealth?.status === 'healthy'
+                ? 'Engine Online'
+                : engineHealth?.status === 'degraded'
+                ? 'Engine Degraded'
+                : 'Engine Connecting…'}
+            </span>
           </div>
         </div>
       </header>
